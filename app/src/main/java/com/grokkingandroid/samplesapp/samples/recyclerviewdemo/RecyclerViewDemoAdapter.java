@@ -78,33 +78,6 @@ public class RecyclerViewDemoAdapter
         return items.size();
     }
 
-    public void toggleSelection(int pos) {
-        if (selectedItems.get(pos, false)) {
-            selectedItems.delete(pos);
-        }
-        else {
-            selectedItems.put(pos, true);
-        }
-        notifyItemChanged(pos);
-    }
-
-    public void clearSelections() {
-        selectedItems.clear();
-        notifyDataSetChanged();
-    }
-
-    public int getSelectedItemCount() {
-        return selectedItems.size();
-    }
-
-    public List<Integer> getSelectedItems() {
-        List<Integer> items = new ArrayList<Integer>(selectedItems.size());
-        for (int i = 0; i < selectedItems.size(); i++) {
-            items.add(selectedItems.keyAt(i));
-        }
-        return items;
-    }
-
     public final static class ListItemViewHolder extends RecyclerView.ViewHolder {
         TextView label;
         TextView dateTime;

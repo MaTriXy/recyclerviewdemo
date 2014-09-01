@@ -6,31 +6,34 @@ import android.content.Intent;
 import android.graphics.Outline;
 import android.os.Bundle;
 import android.support.v4.view.GestureDetectorCompat;
-import android.support.v7.widget.DefaultItemAnimator;
-import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.transition.ChangeTransform;
+import android.util.SparseBooleanArray;
 import android.view.ActionMode;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
 import android.widget.ImageButton;
 
+import org.lucasr.twowayview.ItemClickSupport;
+import org.lucasr.twowayview.ItemClickSupport.OnItemClickListener;
+import org.lucasr.twowayview.ItemClickSupport.OnItemLongClickListener;
+import org.lucasr.twowayview.ItemSelectionSupport;
+import org.lucasr.twowayview.ItemSelectionSupport.ChoiceMode;
+import org.lucasr.twowayview.TwoWayView;
+
 import java.util.Date;
 import java.util.List;
 
-import static android.view.GestureDetector.SimpleOnGestureListener;
-
 public class RecyclerViewDemoActivity
         extends Activity
-        implements RecyclerView.OnItemTouchListener,
-        View.OnClickListener,
+        implements View.OnClickListener,
         ActionMode.Callback {
 
-    RecyclerView recyclerView;
+    TwoWayView recyclerView;
+    ItemSelectionSupport itemSelection;
     RecyclerViewDemoAdapter adapter;
     int itemCount;
     GestureDetectorCompat gestureDetector;
@@ -46,17 +49,43 @@ public class RecyclerViewDemoActivity
 
         setContentView(R.layout.activity_recyclerview_demo);
         fab = (ImageButton) findViewById(R.id.fab_add);
-        recyclerView = (RecyclerView) findViewById(R.id.recyclerView);
+        recyclerView = (TwoWayView) findViewById(R.id.recyclerView);
+        itemSelection = ItemSelectionSupport.addTo(recyclerView);
 
-        LinearLayoutManager layoutManager = new LinearLayoutManager(this);
-        // actually VERTICAL is the default,
-        // just remember: LinearLayoutManager
-        // supports HORIZONTAL layout out of the box
-        layoutManager.setOrientation(LinearLayoutManager.VERTICAL);
-        // you can set the first visible item like this:
-        layoutManager.scrollToPosition(0);
-        recyclerView.setLayoutManager(layoutManager);
+        ItemClickSupport itemClick = ItemClickSupport.addTo(recyclerView);
+        itemClick.setOnItemClickListener(new OnItemClickListener() {
+            @Override
+            public void onItemClick(RecyclerView parent, View child, int position, long id) {
+                if (actionMode != null) {
+                    updateSelectionCount();
+                    return;
+                }
+                DemoModel data = adapter.getItem(position);
+                View innerContainer = child.findViewById(R.id.container_inner_item);
+                innerContainer.setViewName(Constants.NAME_INNER_CONTAINER + "_" + data.id);
+                Activity activity = RecyclerViewDemoActivity.this;
+                Intent startIntent = new Intent(activity, CardViewDemoActivity.class);
+                startIntent.putExtra(Constants.KEY_ID, data.id);
+                ActivityOptions options = ActivityOptions
+                        .makeSceneTransitionAnimation(activity, innerContainer, Constants.NAME_INNER_CONTAINER);
+                activity.startActivity(startIntent, options.toBundle());
+            }
+        });
 
+        itemClick.setOnItemLongClickListener(new OnItemLongClickListener() {
+            @Override
+            public boolean onItemLongClick(RecyclerView parent, View child, int position, long id) {
+                if (actionMode != null) {
+                    return false;
+                }
+                // Start the CAB using the ActionMode.Callback defined above
+                actionMode = startActionMode(RecyclerViewDemoActivity.this);
+                itemSelection.setChoiceMode(ChoiceMode.MULTIPLE);
+                itemSelection.setItemChecked(position, true);
+                updateSelectionCount();
+                return true;
+            }
+        });
 
         // allows for optimizations if all items are of the same size:
         recyclerView.setHasFixedSize(true);
@@ -68,17 +97,6 @@ public class RecyclerViewDemoActivity
         RecyclerView.ItemDecoration itemDecoration =
                 new DividerItemDecoration(this, DividerItemDecoration.VERTICAL_LIST);
         recyclerView.addItemDecoration(itemDecoration);
-
-        // this is the default; this call is actually only necessary with custom ItemAnimators
-        recyclerView.setItemAnimator(new DefaultItemAnimator());
-
-        // onClickDetection is done in this Activity's onItemTouchListener
-        // with the help of a GestureDetector;
-        // Tip by Ian Lake on G+ in a comment to this post:
-        // https://plus.google.com/+LucasRocha/posts/37U8GWtYxDE
-        recyclerView.addOnItemTouchListener(this);
-        gestureDetector =
-                new GestureDetectorCompat(this, new RecyclerViewDemoOnGestureListener());
 
         // fab
         int size = getResources().getDimensionPixelSize(R.dimen.fab_size);
@@ -110,8 +128,7 @@ public class RecyclerViewDemoActivity
         model.label = "New Item " + itemCount;
         itemCount++;
         model.dateTime = new Date();
-        int position = ((LinearLayoutManager) recyclerView.getLayoutManager()).
-                findFirstVisibleItemPosition();
+        int position = recyclerView.getFirstVisiblePosition();
         // needed to be able to show the animation
         // otherwise the view would be inserted before the first
         // visible item; that is outside of the viewable area
@@ -121,8 +138,7 @@ public class RecyclerViewDemoActivity
     }
 
     private void removeItemFromList() {
-        int position = ((LinearLayoutManager) recyclerView.getLayoutManager()).
-                findFirstCompletelyVisibleItemPosition();
+        int position = recyclerView.getFirstVisiblePosition();
         RecyclerViewDemoApp.removeItemFromList(position);
         adapter.removeData(position);
     }
@@ -133,38 +149,11 @@ public class RecyclerViewDemoActivity
             // fab click
             addItemToList();
         }
-        else if (view.getId() == R.id.container_list_item) {
-            // item click
-            int idx = recyclerView.getChildPosition(view);
-            if (actionMode != null) {
-                myToggleSelection(idx);
-                return;
-            }
-            DemoModel data = adapter.getItem(idx);
-            View innerContainer = view.findViewById(R.id.container_inner_item);
-            innerContainer.setViewName(Constants.NAME_INNER_CONTAINER + "_" + data.id);
-            Intent startIntent = new Intent(this, CardViewDemoActivity.class);
-            startIntent.putExtra(Constants.KEY_ID, data.id);
-            ActivityOptions options = ActivityOptions
-                    .makeSceneTransitionAnimation(this, innerContainer, Constants.NAME_INNER_CONTAINER);
-            this.startActivity(startIntent, options.toBundle());
-        }
     }
 
-    private void myToggleSelection(int idx) {
-        adapter.toggleSelection(idx);
-        String title = getString(R.string.selected_count, adapter.getSelectedItemCount());
+    private void updateSelectionCount() {
+        String title = getString(R.string.selected_count, itemSelection.getCheckedItemCount());
         actionMode.setTitle(title);
-    }
-
-    @Override
-    public boolean onInterceptTouchEvent(RecyclerView rv, MotionEvent e) {
-        gestureDetector.onTouchEvent(e);
-        return false;
-    }
-
-    @Override
-    public void onTouchEvent(RecyclerView rv, MotionEvent e) {
     }
 
     @Override
@@ -185,10 +174,10 @@ public class RecyclerViewDemoActivity
     public boolean onActionItemClicked(ActionMode actionMode, MenuItem menuItem) {
         switch (menuItem.getItemId()) {
             case R.id.menu_delete:
-                List<Integer> selectedItemPositions = adapter.getSelectedItems();
+                SparseBooleanArray selectedItemPositions = itemSelection.getCheckedItemPositions();
                 int currPos;
                 for (int i = selectedItemPositions.size() - 1; i >= 0; i--) {
-                    currPos = selectedItemPositions.get(i);
+                    currPos = selectedItemPositions.keyAt(i);
                     RecyclerViewDemoApp.removeItemFromList(currPos);
                     adapter.removeData(currPos);
                 }
@@ -202,29 +191,9 @@ public class RecyclerViewDemoActivity
     @Override
     public void onDestroyActionMode(ActionMode actionMode) {
         this.actionMode = null;
-        adapter.clearSelections();
+        itemSelection.clearChoices();
+        itemSelection.setChoiceMode(ChoiceMode.NONE);
         fab.setVisibility(View.VISIBLE);
-    }
-
-    private class RecyclerViewDemoOnGestureListener extends SimpleOnGestureListener {
-        @Override
-        public boolean onSingleTapConfirmed(MotionEvent e) {
-            View view = recyclerView.findChildViewUnder(e.getX(), e.getY());
-            onClick(view);
-            return super.onSingleTapConfirmed(e);
-        }
-
-        public void onLongPress(MotionEvent e) {
-            View view = recyclerView.findChildViewUnder(e.getX(), e.getY());
-            if (actionMode != null) {
-                return;
-            }
-            // Start the CAB using the ActionMode.Callback defined above
-            actionMode = startActionMode(RecyclerViewDemoActivity.this);
-            int idx = recyclerView.getChildPosition(view);
-            myToggleSelection(idx);
-            super.onLongPress(e);
-        }
     }
 }
 
